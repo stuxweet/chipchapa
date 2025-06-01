@@ -99,131 +99,200 @@ void Chip8::emulateCycle() {
 	uint8_t n = opcode & 0x0F;       // lower 4 bits
 
 	switch (opcode & 0xF000) { // first 4 bits of the upper byte of the opcode
-		case 0x0000:
-			switch (n) {
-				case 0x0000: // Clear the display; CLS
-					printf("Clearing display.\n");
-					for (int i = 0; i < 64 * 32; ++i) {
-						display[i] = 0; 
-						printf("Display cleared.\n");
+	case 0x0000:
+		switch (n) {
+		case 0x0000: // Clear the display; CLS
+			printf("Clearing display.\n");
+			for (int i = 0; i < 64 * 32; ++i) {
+				display[i] = 0;
+				printf("Display cleared.\n");
+			}
+			pc += 2;
+			break;
+		case 0x000E: // Return from subroutine; RET
+			printf("Returning from subroutine.\n");
+			if (sp == 0) {
+				std::cerr << "Error: stack underflow." << std::endl;
+				return; // stack underflow
+			}
+			sp--;
+			pc = stack[sp];
+			break;
+		}
+	case 0x1000: // JP addr
+		printf("Jumping to address: %03X\n", nnn);
+		pc = nnn;
+	case 0x2000: // CALL addr
+		printf("Calling subroutine at address: %03X\n", nnn);
+		sp++;
+		stack[sp] = pc;
+		pc = nnn;
+		break;
+	case 0x3000: // 3xkk; SE Vx, byte;
+		printf("Skipping next instruction if V%X == %02X\n", x, kk);
+		if (V[x] == kk) {
+			pc += 2;
+		}
+		break;
+	case 0x4000: // SNE Vx, byte 
+		printf("Skipping next instruction if V%X != %02X\n", x, kk);
+		if (V[x] != kk) {
+			pc += 2;
+		}
+		break;
+	case 0x5000: // SE Vx, Vy
+		printf("Skipping next instruction if V%X == V%X\n", x, y);
+		if (V[x] == V[y]) {
+			pc += 2;
+		}
+		break;
+	case 0x6000: // LD Vx, byte
+		printf("Loading %02X into V%X\n", kk, x);
+		V[x] = kk;
+		break;
+	case 0x7000: // ADD Vx, byte
+		printf("Adding %02X to V%X\n", kk, x);
+		V[x] += kk;
+		break;
+	case 0x8000:
+		switch (n) {
+		case 0x0000: // 8XY0; LD Vx, Vy 
+			printf("Loading V%X into V%X\n", y, x);
+			V[x] = V[y];
+			break;
+		case 0x0001: // 8XY1; OR Vx, Vy
+			printf("ORing V%X with V%X\n", y, x);
+			V[x] |= V[y];
+			break;
+		case 0x0002: // 8XY2; AND Vx, Vy
+			printf("ANDing V%X with V%X\n", y, x);
+			V[x] &= V[y];
+			break;
+		case 0x0003: // 8XY3; XOR Vx, Vy
+			printf("XORing V%X with V%X\n", y, x);
+			V[x] ^= V[y];
+			break;
+		case 0x0004: // 8XY4; ADD Vx, Vy
+			printf("Adding V%X to V%X\n", y, x);
+			uint16_t sum = V[x] + V[y];
+			V[0xF] = (sum > 255) ? 1 : 0; // set carry flag if overflow occurs
+			printf("Carry flag set to %d\n", V[0xF]);
+			V[x] = sum & 0xFF; // store only the lower 8 bits
+			break;
+		case 0x0005: // 8XY5; SUB Vx, Vy
+			printf("Subtracting V%X from V%X\n", y, x);
+			V[0xF] = (V[x] >= V[y]) ? 1 : 0; // set carry flag if Vx > Vy
+			V[x] -= V[y];
+			break;
+		case 0x0006: // 8XY6; SHR Vx {, Vy}
+			printf("Shifting V%X right\n", x);
+			V[0xF] = V[x] & 0x01;
+			V[x] >>= 1; // shift right
+			break;
+		case 0x0007: // 8XY7; SUBN Vx, Vy
+			printf("Subtracting V%X from V%X\n", x, y);
+			V[0xF] = (V[y] >= V[x]) ? 1 : 0; // set carry flag if Vy > Vx
+			V[x] = V[y] - V[x];
+			break;
+		case 0x000E: // 8XYE; SHL Vx {, Vy}
+			printf("Shifting V%X left\n", x);
+			V[0xF] = (V[x] & 0x80) ? 1 : 0;  // set carry flag if the highest bit is set (1)
+			V[x] <<= 1; // shift left
+			break;
+		}
+	case 0x9000: // 9XY0; SNE Vx, Vy
+		if (V[x] != V[y]) {
+			printf("Skipping next instruction because V%X != V%X\n", x, y);
+			pc += 2;
+		}
+		else {
+			printf("Not skipping next instruction because V%X == V%X\n", x, y);
+		}
+		break;
+	case 0xA000: // ANNN; LD I, addr
+		printf("Setting I to address: %03X\n", nnn);
+		I = nnn;
+		break;
+	case 0xB000: // BNNN; JP V0, addr
+		printf("Jumping to address: %03X + V0\n", nnn);
+		pc = nnn + V[0];
+		break;
+	case 0xC000: // CXKK; RND Vx, byte
+		printf("Setting V%X to random value ANDed with %02X\n", x, kk);
+		V[x] = (rand() % 0xFF) & kk; // generate a random byte and AND with kk
+		break;
+	case 0xD000: // DXYN; DRW Vx, Vy, nibble
+		printf("Drawing sprite at V%X, V%X with %d bytes\n", x, y, n);
+
+		// é aqui que o filho chora e a mãe não vê
+
+		/*
+		*	From Cowgod's documentation:
+			Display n-byte sprite starting at memory location I at(Vx, Vy), set VF = collision.
+			The interpreter reads n bytes from memory, starting at the address stored in I.
+			These bytes are then displayed as sprites on screen at coordinates(Vx, Vy).
+			Sprites are XORed onto the existing screen.
+			If this causes any pixels to be erased, VF is set to 1, otherwise it is set to 0.
+			If the sprite is positioned so part of it is outside the coordinates of the display,
+			it wraps around to the opposite side of the screen.
+		*/
+
+		uint8_t posX = V[x];
+		uint8_t posY = V[y];
+		uint8_t spriteLine = 0;
+		V[0xF] = 0;
+		/*
+			I don't know if this is working correctly, but I'm going to assume it is for now.
+			I still need to understand some details about how the display works.
+		*/
+		for (int i = 0; i < n; ++i) { // for each vertical line of the sprite
+			spriteLine = memory[I + i]; // load current sprite line from memory (1 byte per line ~ 8 bits long always)
+			uint8_t currentY = (posY + i) % 32; // Wrap-around if the sprite goes off the bottom edge
+			for (int j = 0; j < 8; ++j) { // for each horizontal pixel in the line (from 7=left (MSB) to 0=right (LSB))
+				uint8_t currentX = (posX + (7 - j)) % 64;  // Wrap-around if the sprite goes off the right edge
+				int displayIndex = currentY * 64 + currentX; // calculate the screen index
+
+				if (spriteLine & (1 << (7 - j))) { // check if the current pixel is set in the sprite line
+					if (display[displayIndex] == 1) { // if the pixel is already set
+						V[0xF] = 1; // set collision flag
 					}
-					pc += 2;
-					break;
-				case 0x000E: // Return from subroutine; RET
-					printf("Returning from subroutine.\n");
-					if (sp == 0) {
-						std::cerr << "Error: stack underflow." << std::endl;
-						return; // stack underflow
-					}
-					sp--;
-					pc = stack[sp];
-					break;
+
+					display[displayIndex] ^= 1; // XOR the pixel (toggle it)
+				}
 			}
-		case 0x1000: // JP addr
-			printf("Jumping to address: %03X\n", nnn);
-			pc = nnn;
-		case 0x2000: // CALL addr
-			printf("Calling subroutine at address: %03X\n", nnn);
-			sp++;
-			stack[sp] = pc;
-			pc = nnn;
-			break;
-		case 0x3000: // 3xkk; SE Vx, byte;
-			printf("Skipping next instruction if V%X == %02X\n", x, kk);
-			if (V[x] == kk) { 
+		}
+		break;
+	case 0xE000:
+		switch (n) {
+		case 0x000E:
+			if (keypad[V[x]] != 0) { // EX9E; SKP Vx
+				printf("Skipping next instruction because key %X is pressed\n", V[x]);
 				pc += 2;
 			}
-			break;
-		case 0x4000: // SNE Vx, byte 
-			printf("Skipping next instruction if V%X != %02X\n", x, kk);
-			if (V[x] != kk) {
+			else {
+				printf("Not skipping next instruction because key %X is not pressed\n", V[x]);
+			}
+		case 0x0001:
+			if (keypad[V[x]] == 0) { // EXA1; SKNP Vx
+				printf("Skipping next instruction because key %X is not pressed\n", V[x]);
 				pc += 2;
 			}
-			break;
-		case 0x5000: // SE Vx, Vy
-			printf("Skipping next instruction if V%X == V%X\n", x, y);
-			if (V[x] == V[y]) {
-				pc += 2;
+			else {
+				printf("Not skipping next instruction because key %X is pressed\n", V[x]);
 			}
 			break;
-		case 0x6000: // LD Vx, byte
-			printf("Loading %02X into V%X\n", kk, x);
-			V[x] = kk;
+		}
+	case 0xF000:
+		switch (kk) {
+		case 0x0007: // FX07; LD Vx, DT
+			printf("Loading delay timer into V%X\n", x);
+			V[x] = delay_timer;
 			break;
-		case 0x7000: // ADD Vx, byte
-			printf("Adding %02X to V%X\n", kk, x);
-			V[x] += kk;
-			break;
-		case 0x8000: 
-			switch (n) {
-				case 0x0000: // 8XY0; LD Vx, Vy 
-					printf("Loading V%X into V%X\n", y, x);
-					V[x] = V[y]; 
-					break;
-				case 0x0001: // 8XY1; OR Vx, Vy
-					printf("ORing V%X with V%X\n", y, x);
-					V[x] |= V[y]; 
-					break;
-				case 0x0002: // 8XY2; AND Vx, Vy
-					printf("ANDing V%X with V%X\n", y, x);
-					V[x] &= V[y]; 
-					break;
-				case 0x0003: // 8XY3; XOR Vx, Vy
-					printf("XORing V%X with V%X\n", y, x);
-					V[x] ^= V[y]; 
-					break;
-				case 0x0004: // 8XY4; ADD Vx, Vy
-					printf("Adding V%X to V%X\n", y, x);
-					uint16_t sum = V[x] + V[y];
-					V[0xF] = (sum > 255) ? 1 : 0; // set carry flag if overflow occurs
-					printf("Carry flag set to %d\n", V[0xF]);
-					V[x] = sum & 0xFF; // store only the lower 8 bits
-					break;
-				case 0x0005: // 8XY5; SUB Vx, Vy
-					printf("Subtracting V%X from V%X\n", y, x);
-					V[0xF] = (V[x] >= V[y]) ? 1 : 0; // set carry flag if Vx > Vy
-					V[x] -= V[y];
-					break;
-				case 0x0006: // 8XY6; SHR Vx {, Vy}
-					printf("Shifting V%X right\n", x);
-					V[0xF] = V[x] & 0x01;
-					V[x] >>= 1; // shift right
-					break;
-				case 0x0007: // 8XY7; SUBN Vx, Vy
-					printf("Subtracting V%X from V%X\n", x, y);
-					V[0xF] = (V[y] >= V[x]) ? 1 : 0; // set carry flag if Vy > Vx
-					V[x] = V[y] - V[x];
-					break;
-				case 0x000E: // 8XYE; SHL Vx {, Vy}
-					printf("Shifting V%X left\n", x);
-					V[0xF] = (V[x] & 0x80) ? 1 : 0;  // set carry flag if the highest bit is set (1)
-					V[x] <<= 1; // shift left
-					break;
-		case 0x9000: // 9XY0; SNE Vx, Vy
-			if (V[x] != V[y]) {
-				printf("Skipping next instruction because V%X != V%X\n", x, y);
-				pc += 2;
-			} else {
-				printf("Not skipping next instruction because V%X == V%X\n", x, y);
-			}
-			break;
-		case 0xA000: // ANNN; LD I, addr
-			printf("Setting I to address: %03X\n", nnn);
-			I = nnn;
-			break;
-		case 0xB000: // BNNN; JP V0, addr
-			printf("Jumping to address: %03X + V0\n", nnn);
-			pc = nnn + V[0];
-			break;
-		case 0xC000: // CXKK; RND Vx, byte
-			printf("Setting V%X to random value ANDed with %02X\n", x, kk);
-			V[x] = (rand() % 0xFF) & kk; // generate a random byte and AND with kk
-			break;
-		case 0xD000: // DXYN; DRW Vx, Vy, nibble
-			printf("Drawing sprite at V%X, V%X with %d bytes\n", x, y, n);
-			// é aqui que o filho chora e a mãe não vê
+		case 0x000A: // FX0A; LD Vx, K
+			bool keyPressed = false;
+
 			break;
 		default:
 			// Unknown opcode
+		}
 	}
-}
