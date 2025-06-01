@@ -24,6 +24,7 @@ public:
 	uint16_t keypad[16];	
 
 	void loadROM(const std::string& filename);
+	void emulateCycle();
 
 	Chip8();
 	~Chip8();

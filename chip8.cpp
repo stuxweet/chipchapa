@@ -58,6 +58,7 @@ Chip8::~Chip8()
 
 void Chip8::loadROM(const std::string& filename)
 {
+	printf("Loading ROM: %s\n", filename.c_str());
 	FILE* rom = fopen(filename.c_str(), "rb");
 
 	if (!rom) {
@@ -76,12 +77,59 @@ void Chip8::loadROM(const std::string& filename)
 	}
 
 	// load ROM into memory, starting address = 0x200 in Chip-8
-	// 0x200 is the standard starting address for CHIP-8 programs
 	// there's no need to allocate memory dynamically since we have a fixed-size array
 	size_t read = fread(&memory[0x200], 1, size, rom);
 	if (read != size) {
 		std::cerr << "Error reading the ROM file." << std::endl;
 	}
 
+	printf("ROM loaded successfully, size: %ld bytes.\n", size);
 	fclose(rom);
+}
+
+void Chip8::emulateCycle() {
+	opcode = memory[pc] << 8 | memory[pc + 1]; // fetch opcode
+
+	switch (opcode & 0xF000) {
+		case 0x0000:
+			// Handle 0x00E0 and 0x00EE
+			switch (opcode) {
+				case 0x00E0: // 00E0 - Clear the display / CLS
+					printf("Clearing display.\n");
+					for (int i = 0; i < 64 * 32; ++i) {
+						display[i] = 0;
+					}
+					pc += 2;
+					break;
+				case 0x00EE: // 00EE - Return from subroutine / RET
+					printf("Returning from subroutine.\n");
+					if (sp == 0) {
+						std::cerr << "Error: stack underflow." << std::endl;
+						return; // stack underflow
+					}
+					sp--;
+					pc = stack[sp];
+					break;
+			}
+		case 0x1000: // 1NNN - Jump to address NNN / JP addr
+			printf("Jumping to address: %03X\n", opcode & 0x0FFF);
+			pc = opcode & 0x0FFF;
+		case 0x2000: // CALL addr
+			break;
+		case 0x3000: // SE Vx, byte
+			break;
+		case 0x4000: // SNE Vx, byte
+			break;
+		case 0x5000: // SE Vx, Vy
+			break;
+		case 0x6000: // LD Vx, byte
+			break;
+		case 0x7000: // ADD Vx, byte
+			break;
+		case 0x8000: // LD Vx, Vy
+			break;
+		// ... handle other opcodes...
+		default:
+			// Unknown opcode
+	}
 }
